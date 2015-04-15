@@ -20,7 +20,6 @@ command :ipa do |c|
 	c.action do |args, options|
 
 		# getting  parameters
-		puts "TEAM = #{options.team}"
 		@ipa_path = options.ipa
 		@provisioning_path = options.provisioning
 		@certificate_name = options.certificate
@@ -61,7 +60,7 @@ command :ipa do |c|
 			File.open('new-entitlements.plist', 'w') { |file| file.write(contents)}
 			@entitlement_file = 'new-entitlements.plist'
 		end
-		
+
 		say "Removing old code signatures" unless options.quiet
 		system "rm -rf #{@app_filename}/_CodeSignature #{@app_filename}/CodeResources"
 
