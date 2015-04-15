@@ -11,6 +11,7 @@ command :ipa do |c|
 	c.option '-p', '--provisioning PROVISIONING', 'Path to the provisioning profile file (generally a .mobileprovision file)'
 	c.option '-c', '--certificate CERTIFICATE', 'Name of the Distribution Certificate name (copy it from Certificate detail\'s "Common name" at the Keychain Access)'
 	c.option '-b', '--bundle BUNDLE', 'The new bundle identifier in case your new provisioning has a differente one'
+	c.option '-t', '--team IDENTIFIER', 'The new team identifier to use to preserve entitlements (not allowed with --entitlementFile)'
 	c.option '--bundleVersionShort VERSIONSHORT', 'The new release version (CFBundleShortVersionString)'
 	c.option '--bundleVersion VERSION', 'The new build version (CFBundleVersion)'
 	c.option '--entitlementFile FILE', 'The new entitlement used for creating the signatures'
@@ -19,7 +20,7 @@ command :ipa do |c|
 	c.action do |args, options|
 
 		# getting  parameters
-
+		puts "TEAM = #{options.team}"
 		@ipa_path = options.ipa
 		@provisioning_path = options.provisioning
 		@certificate_name = options.certificate
@@ -27,9 +28,9 @@ command :ipa do |c|
 		@version_short = options.bundleVersionShort
 		@bundle_version = options.bundleVersion
 		@entitlement_file = options.entitlementFile;
+		@team_identifier = options.team
 
 		return unless validate_params!
-
 		# unzip IPA file to manipulate the plist and the certificate resources
 
 		@ipa_filename = File.basename @ipa_path, File.extname(@ipa_path)
@@ -42,6 +43,25 @@ command :ipa do |c|
 
 		@app_filename = Dir["#{@tmp_dir}/Payload/*.app"][0]
 
+		if @team_identifier
+			say "Dumping existing entitlements" unless options.quet
+			system "codesign -d --entitlements :tmp-entitlements.plist #{@app_filename}"
+			oldBundle = `/usr/libexec/PlistBuddy -c \"Print application-identifier\" tmp-entitlements.plist`
+			oldTeam = `/usr/libexec/PlistBuddy -c \"Print com.apple.developer.team-identifier\" tmp-entitlements.plist`
+			oldTeam = oldTeam.rstrip
+			oldBundle = oldBundle.rstrip.gsub("#{oldTeam}.", "")
+			say "Changing team identifier from #{oldTeam} to #{@team_identifier}" unless options.quiet
+			contents = File.open('tmp-entitlements.plist', 'r').read
+			contents = contents.gsub(oldTeam, @team_identifier)
+			if @new_bundle_identifier
+				say "Changing bundle identifier in entitlements to #{@new_bundle_identifier}" unless options.quiet
+				contents = contents.gsub(oldBundle, @new_bundle_identifier)
+			end
+			system "rm tmp-entitlements.plist"
+			File.open('new-entitlements.plist', 'w') { |file| file.write(contents)}
+			@entitlement_file = 'new-entitlements.plist'
+		end
+		
 		say "Removing old code signatures" unless options.quiet
 		system "rm -rf #{@app_filename}/_CodeSignature #{@app_filename}/CodeResources"
 
@@ -88,6 +108,7 @@ command :ipa do |c|
 
 		say "Cleaning temp folders" unless options.quiet
 		system "rm -rf #{@tmp_dir}"
+		system "rm -rf new-entitlements.plist"
 
 		say "done." unless options.quiet
 
